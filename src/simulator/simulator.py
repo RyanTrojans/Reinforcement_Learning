@@ -3,11 +3,10 @@ import numpy as np
 from src.simulator.Util import get_purity, get_reward
 import logging
 
-# FORMAT = '%(asctime)s %(clientip)-15s %(user)-8s %(message)s'
-# logging.basicConfig(format=FORMAT)
-# d = {'clientip': '192.168.0.1', 'user': 'fbloggs'}
 logger = logging.getLogger()
 logger.setLevel(20)
+
+
 class process_env:
     ''' fermentation and chromatography simulation environment (virtual laboratory)
     '''
@@ -70,7 +69,8 @@ class process_env:
             self.upstream_done = True
             if len(self.state) > 2:
                 self.state = n_state[4:6] * n_state[-1]
-                logging.info('upstream harvest: protein {:.2f} g and impurity {:.2f} g'.format(self.state[0], self.state[1]))
+                logging.info(
+                    'upstream harvest: protein {:.2f} g and impurity {:.2f} g'.format(self.state[0], self.state[1]))
         else:
             self.state = n_state
         return n_state, r, self.done, self.upstream_done
@@ -199,12 +199,14 @@ class chromatography:
 
         protein = initial_state[0] * removal_rate_protein
         impurity = initial_state[1] * removal_rate_impurity
-        logging.info('protein removal rate: {:.2f}; impurity removal rate: {:.2f}'.format(removal_rate_protein, removal_rate_impurity))
+        logging.info('protein removal rate: {:.2f}; impurity removal rate: {:.2f}'.format(removal_rate_protein,
+                                                                                          removal_rate_impurity))
         return [protein, impurity]
 
 
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
+
     initial_state = [0.4, 10, 5, 0, 0., 0, 5]  # [3.4, 40, 5, 1.5]
     simulator = cho_cell_culture_simulator(initial_state, delta_t=1, num_action=1, noise_level=2500)
     chrom = chromatography()
