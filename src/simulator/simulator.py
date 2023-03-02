@@ -213,12 +213,12 @@ if __name__ == '__main__':
     env = process_env(simulator, chrom,
                       upstream_variable_cost=0.001,
                       downstream_variable_cost=10,
-                      product_price=5,
+                      product_price=50,
                       failure_cost=48,
-                      product_requirement=15,
+                      product_requirement=10,
                       purity_requirement=0.85,
                       yield_penalty_cost=6, )
-    action = 0.05
+    action = 0.05  # L/h action space [0, 0.2]
     done, upstream_done = False, False
     state_buffer = []
     next_state_buffer = []
