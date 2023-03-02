@@ -188,7 +188,7 @@ class chromatography:
     def simulate(self, initial_state, window, step, rand_seed=None):
         if rand_seed == None:
             np.random.seed(
-                int(str(window) + str(step)))
+                int(str(window) + str(step) + str(int(np.sum(initial_state)*100))))
         else:
             np.random.seed(rand_seed)
 
