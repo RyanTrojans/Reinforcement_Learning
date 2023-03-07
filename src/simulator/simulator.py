@@ -38,7 +38,7 @@ class process_env:
         self.product_price = product_price
         self.yield_penalty_cost = yield_penalty_cost
 
-        self.upstream_termination_time = self.upstream.harvest_time / self.upstream.delta_t
+        self.upstream_termination_time = self.upstream.harvest_time
         self.process_end_time = self.upstream_termination_time + self.downstream.horizon
 
     def reset(self):
@@ -208,7 +208,7 @@ if __name__ == '__main__':
     import matplotlib.pyplot as plt
 
     initial_state = [0.4, 10, 5, 0, 0., 0, 5]  # [3.4, 40, 5, 1.5]
-    simulator = cho_cell_culture_simulator(initial_state, delta_t=1, num_action=1, noise_level=2500)
+    simulator = cho_cell_culture_simulator(initial_state, delta_t=24, num_action=1, noise_level=2500)
     chrom = chromatography()
     env = process_env(simulator, chrom,
                       upstream_variable_cost=0.001,
@@ -234,7 +234,7 @@ if __name__ == '__main__':
         action_buffer.append(action)
         reward_buffer.append(reward)
 
-    print('upstream: ', next_state_buffer[359], 'downstream: ', np.array(next_state_buffer[360:]))
-    plt.plot(next_state_buffer[:360], label=simulator.label)
-    plt.legend()
-    plt.show()
+    # print('upstream: ', next_state_buffer[359], 'downstream: ', np.array(next_state_buffer[360:]))
+    # plt.plot(next_state_buffer[:360], label=simulator.label)
+    # plt.legend()
+    # plt.show()
