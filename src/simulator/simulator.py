@@ -1,6 +1,7 @@
 import numpy as np
+import pandas as pd
 
-from src.simulator.Util import get_purity, get_reward
+from src.simulator.Util import *
 import logging
 
 logger = logging.getLogger()
@@ -52,7 +53,7 @@ class process_env:
     def step(self, action):  # predict one step lookaahead
         if self.t < self.upstream_termination_time:
             n_state = self.upstream.simulate(self.state, action)
-            r = - action * self.upstream_variable_cost  # variable cost
+            r = - action * self.upstream_variable_cost * self.upstream.delta_t  # variable cost
             self.t += self.upstream.delta_t
         else:
             n_state = self.downstream.simulate(self.state, action, int(self.t - self.upstream_termination_time))
@@ -92,7 +93,7 @@ class cho_cell_culture_simulator:
         self.YLacGlc = 0.7  # [mol / mol]
         self.YNH4Gln = 0.6287  # [mol / mol]
         self.q_mab = 0.00151
-        self.q_I = 0.003
+        self.q_I = 0.01
         self.kd = 0.004
         self.kDlac = 45.8
         self.Glcin = 50
@@ -126,7 +127,7 @@ class cho_cell_culture_simulator:
         dL = p[5] * ((mu - mu_d) / p[3] + self.m_G) * x[0] + u / x[6] * (self.Lacin - x[3])
         dP = p[6] * (1 - mu / self.mu_max) * x[0] - u / x[6] * x[4]
         dI = p[7] * mu / self.mu_max * x[0] - u / x[6] * x[5]
-        dV = 0  # u - F_evp
+        dV = u - F_evp
         return np.array([dX, dG, dN, dL, dP, dI, dV])
 
     def step(self, x, u, p):
@@ -145,26 +146,15 @@ class chromatography:
                  noise_level=0.05,
                  horizon=3):
         # define parameters in bioreactor model
-        purity_coef = [0.48, 0.28]
-        self.chrom1_protein = [self.get_alpha_beta(mu=purity, sigma=noise_level * purity_coef[0]) for purity in
-                               [(1 + pool / 12) * purity_coef[0] for pool in range(10)]]
-        self.chrom1_impurity = [self.get_alpha_beta(mu=purity, sigma=noise_level * purity_coef[1]) for purity in
-                                [(1 + pool / 12) * purity_coef[1] for pool in range(10)]]
-
-        # self.chrom1_protein = [[purity - 0.1 * purity_coef[0], purity + 0.1 * purity_coef[0]] for purity in [(1 + pool / 11) * purity_coef[0] for pool in range(10)]]
-        # self.chrom1_impurity = [[purity - 0.1 * purity_coef[1], purity + 0.1 * purity_coef[1]] for purity in [(1 + pool / 11) * purity_coef[1] for pool in range(10)]]
-
-        purity_coef = [0.5, 0.25]
-        self.chrom2_protein = [self.get_alpha_beta(mu=purity, sigma=noise_level * purity_coef[0]) for purity in
-                               [(1 + pool / 12) * purity_coef[0] for pool in range(10)]]
-        self.chrom2_impurity = [self.get_alpha_beta(mu=purity, sigma=noise_level * purity_coef[1]) for purity in
-                                [(1 + pool / 12) * purity_coef[1] for pool in range(10)]]
-
-        purity_coef = [0.5, 0.22]
-        self.chrom3_protein = [self.get_alpha_beta(mu=purity, sigma=noise_level * purity_coef[0]) for purity in
-                               [(1 + pool / 12) * purity_coef[0] for pool in range(10)]]
-        self.chrom3_impurity = [self.get_alpha_beta(mu=purity, sigma=noise_level * purity_coef[1]) for purity in
-                                [(1 + pool / 12) * purity_coef[1] for pool in range(10)]]
+        chrom_dat = pd.read_csv('ChromatographyData', sep='\t')
+        chrom_dat = select_action(chrom_dat)
+        print(chrom_dat)
+        self.chrom1_protein = [self.get_alpha_beta(mu=q_p, sigma=noise_level * q_p) for q_p, q_i in chrom_dat]
+        self.chrom1_impurity = [self.get_alpha_beta(mu=q_i, sigma=noise_level * q_i) for q_p, q_i in chrom_dat]
+        self.chrom2_protein = [self.get_alpha_beta(mu=q_p, sigma=noise_level * q_p) for q_p, q_i in chrom_dat]
+        self.chrom2_impurity = [self.get_alpha_beta(mu=q_i, sigma=noise_level * q_i) for q_p, q_i in chrom_dat]
+        self.chrom3_protein = [self.get_alpha_beta(mu=q_p, sigma=noise_level * q_p) for q_p, q_i in chrom_dat]
+        self.chrom3_impurity = [self.get_alpha_beta(mu=q_i, sigma=noise_level * q_i) for q_p, q_i in chrom_dat]
 
         self.true_model_params = {1: {'protein': self.chrom1_protein, 'impurity': self.chrom1_impurity},
                                   2: {'protein': self.chrom2_protein, 'impurity': self.chrom2_impurity},
@@ -211,14 +201,15 @@ if __name__ == '__main__':
     simulator = cho_cell_culture_simulator(initial_state, delta_t=24, num_action=1, noise_level=2500)
     chrom = chromatography()
     env = process_env(simulator, chrom,
-                      upstream_variable_cost=0.001,
+                      upstream_variable_cost=2,  # sensitive hyperparameters
                       downstream_variable_cost=10,
-                      product_price=50,
-                      failure_cost=48,
-                      product_requirement=10,
-                      purity_requirement=0.85,
-                      yield_penalty_cost=6, )
-    action = 0.05  # L/h action space [0, 0.2]
+                      product_price=30,
+                      failure_cost=200,
+                      product_requirement=50,  # sensitive hyperparameters 20 -60
+                      purity_requirement=0.93,  # sensitive hyperparameters 0.85 - 0.93
+                      yield_penalty_cost=50,  # sensitive hyperparameters
+                      )
+    action = 0.05  # L/h action space [0, 0.05]
     done, upstream_done = False, False
     state_buffer = []
     next_state_buffer = []
@@ -228,13 +219,15 @@ if __name__ == '__main__':
         cur_state = env.state
         next_state, reward, done, upstream_done = env.step(action)
         if upstream_done:
-            action = 4
+            action = 2  # [6]
         state_buffer.append(cur_state)
         next_state_buffer.append(next_state)
         action_buffer.append(action)
         reward_buffer.append(reward)
+    print(np.sum(reward_buffer))
 
-    # print('upstream: ', next_state_buffer[359], 'downstream: ', np.array(next_state_buffer[360:]))
+    print('upstream: ', next_state_buffer[-4], 'downstream: ', np.array(next_state_buffer[-4:]))
+    print('purity: ', next_state_buffer[-1][-2] / np.sum(next_state_buffer[-1]))
     # plt.plot(next_state_buffer[:360], label=simulator.label)
     # plt.legend()
     # plt.show()
