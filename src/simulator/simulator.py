@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from src.simulator.Util import *
+from BNStructureAnalysis.src.simulator.Util import *
 import logging
 
 logger = logging.getLogger()
