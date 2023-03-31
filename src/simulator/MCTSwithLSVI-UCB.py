@@ -1,7 +1,11 @@
 import numpy as np
 import pandas as pd
 import time
+from .environment import process_env
+from .simulator import cho_cell_culture_simulator
+from .chromatography import chromatography
 from BNStructureAnalysis.src.simulator.Util import *
+import matplotlib.pyplot as plt
 import logging
 import copy
 import math
@@ -16,140 +20,6 @@ from .constants import (
     vector_cartesian,
     product_r,
 )
-
-
-# Create ENV
-class process_env:
-    ''' fermentation and chromatography simulation environment (virtual laboratory)
-    '''
-
-    def __init__(self,
-                 upstream,
-                 downstream,
-                 upstream_variable_cost,
-                 downstream_variable_cost,
-                 product_price,
-                 failure_cost,
-                 product_requirement,
-                 purity_requirement,
-                 yield_penalty_cost):
-        self.done = False
-        self.upstream_done = False
-        self.initial_state = np.array(upstream.initial_state)
-        self.state = np.array(upstream.initial_state)
-        self.upstream = upstream  # simulation model
-        self.downstream = downstream
-        self.num_state = upstream.num_state
-        self.num_action = upstream.num_action
-        self.purity_requirement = purity_requirement
-        self.product_requirement = product_requirement
-        self.t = 0
-        self.upstream_variable_cost = upstream_variable_cost
-        self.downstream_variable_cost = downstream_variable_cost
-        self.failure_cost = failure_cost
-        self.product_price = product_price
-        self.yield_penalty_cost = yield_penalty_cost
-
-        self.upstream_termination_time = self.upstream.harvest_time
-        self.process_end_time = self.upstream_termination_time + self.downstream.horizon
-
-    def reset(self):
-        self.done = False
-        self.upstream_done = False
-        self.state = np.random.multivariate_normal(self.initial_state,
-                                                   self.initial_state / 5 * np.identity(self.num_state))
-        self.t = 0
-        return self.state
-
-    def step(self, action):  # predict one step lookaahead
-        if self.t < self.upstream_termination_time:
-            n_state = self.upstream.simulate(self.state, action)
-            r = - action * self.upstream_variable_cost * self.upstream.delta_t  # variable cost
-            self.t += self.upstream.delta_t
-        else:
-            n_state = self.downstream.simulate(self.state, action, int(self.t - self.upstream_termination_time))
-            r = - action * self.downstream_variable_cost  # variable cost
-            self.t += 1
-        self.done = True if self.process_end_time == self.t else False
-
-        if self.done:
-            purity = get_purity(n_state)
-            r += get_reward(purity, n_state[-2], self.product_requirement, self.purity_requirement,
-                            self.failure_cost, self.product_price, self.yield_penalty_cost)
-
-        if self.t == self.upstream_termination_time:
-            self.upstream_done = True
-            if len(self.state) > 2:
-                self.state = n_state[4:6] * n_state[-1]
-                logging.info(
-                    'upstream harvest: protein {:.2f} g and impurity {:.2f} g'.format(self.state[0], self.state[1]))
-        else:
-            self.state = n_state
-        return n_state, r, self.done, self.upstream_done
-
-
-class cho_cell_culture_simulator:
-    def __init__(self, initial_state, delta_t, num_action, noise_level=2000, harvest_time=360):
-        self.a_2 = None
-        self.a_1 = None
-        self.m_G = None
-        self.mu_max = None
-        self.noise_level = noise_level
-        self.set_param()
-        self.KGlc = 1  # [mM]
-        self.KGln = 0.047  # [mM]
-        self.KIL = 43  # [mM]
-        self.YXGlc = 10.57  # [1e8 cell / mmol]
-        self.YXGln = 9.74  # [1e8 cell / mmol]
-        self.YLacGlc = 0.7  # [mol / mol]
-        self.YNH4Gln = 0.6287  # [mol / mol]
-        self.q_mab = 0.00151
-        self.q_I = 0.01
-        self.kd = 0.004
-        self.kDlac = 45.8
-        self.Glcin = 50
-        self.Glnin = 10
-        self.Lacin = 0
-        self.p = [self.KGlc, self.KGln, self.KIL, self.YXGlc, self.YXGln, self.YLacGlc, self.q_mab, self.q_I]
-        self.delta_t = delta_t  # the process measurement time interval
-        self.dt = 0.1  # numerical time interval
-        self.num_step = int(self.delta_t / self.dt)
-        self.harvest_time = harvest_time
-        self.initial_state = initial_state
-        self.num_action = num_action
-        self.num_state = len(initial_state)
-        self.label = ['Xv', 'Glucose', 'Glutamine', 'Lactate', 'Product', 'Impurity', 'Volume']
-
-    def set_param(self):
-        self.mu_max = 0.039
-        self.m_G = 69.2 * 1e-4
-        self.a_1 = 3.2 * 1e-4
-        self.a_2 = 2.1 * 1e-4
-
-    def grad(self, x, u, p):
-        F_evp = 0.001
-        mu = self.mu_max * x[1] / (p[0] + x[1]) * x[2] / (p[1] + x[2]) * p[2] / (p[2] + x[3])
-        mu_d = self.kd * x[3] / (x[3] + self.kDlac)
-        m_N = self.a_1 * x[2] / (self.a_2 + x[2])
-
-        dX = (mu - mu_d) * x[0] - (u - F_evp) / x[6] * x[0]
-        dG = - ((mu - mu_d) / p[3] + self.m_G) * x[0] + (u - F_evp) / x[6] * (self.Glcin - x[1])
-        dN = - ((mu - mu_d) / p[4] + m_N) * x[0] + (u - F_evp) / x[6] * (self.Glnin - x[2])
-        dL = p[5] * ((mu - mu_d) / p[3] + self.m_G) * x[0] + u / x[6] * (self.Lacin - x[3])
-        dP = p[6] * (1 - mu / self.mu_max) * x[0] - u / x[6] * x[4]
-        dI = p[7] * mu / self.mu_max * x[0] - u / x[6] * x[5]
-        dV = u - F_evp
-        return np.array([dX, dG, dN, dL, dP, dI, dV])
-
-    def step(self, x, u, p):
-        grad = self.grad(x, u, p)
-        return grad * self.dt
-
-    def simulate(self, state, action):
-        for _ in range(self.num_step):
-            state += self.step(state, action, self.p)
-            state = np.clip(state, 0, None)
-        return np.clip(np.random.multivariate_normal(state, np.diag(state) / self.noise_level), 0, None)
 
 
 class TreeNode:
@@ -170,59 +40,6 @@ class TreeNode:
 
     def addsubnode(self,node,key):
         self.dicsubnode[key] = node
-
-
-class chromatography:
-    def __init__(self,
-                 noise_level=0.05,
-                 horizon=3):
-        # define parameters in bioreactor model
-        chrom_dat = pd.read_csv('ChromatographyData', sep='\t')
-        chrom_dat = select_action(chrom_dat)
-        print(chrom_dat)
-        self.chrom1_protein = [self.get_alpha_beta(mu=q_p, sigma=noise_level * q_p) for q_p, q_i in chrom_dat]
-        self.chrom1_impurity = [self.get_alpha_beta(mu=q_i, sigma=noise_level * q_i) for q_p, q_i in chrom_dat]
-        self.chrom2_protein = [self.get_alpha_beta(mu=q_p, sigma=noise_level * q_p) for q_p, q_i in chrom_dat]
-        self.chrom2_impurity = [self.get_alpha_beta(mu=q_i, sigma=noise_level * q_i) for q_p, q_i in chrom_dat]
-        self.chrom3_protein = [self.get_alpha_beta(mu=q_p, sigma=noise_level * q_p) for q_p, q_i in chrom_dat]
-        self.chrom3_impurity = [self.get_alpha_beta(mu=q_i, sigma=noise_level * q_i) for q_p, q_i in chrom_dat]
-
-        self.true_model_params = {1: {'protein': self.chrom1_protein, 'impurity': self.chrom1_impurity},
-                                  2: {'protein': self.chrom2_protein, 'impurity': self.chrom2_impurity},
-                                  3: {'protein': self.chrom3_protein, 'impurity': self.chrom3_impurity}}
-
-        self.sim_size = 10
-        self.horizon = horizon
-
-    def get_alpha_beta(self, alpha=None, beta=None, mu=None, sigma=None):
-        if (alpha is not None) and (beta is not None):
-            pass
-        elif (mu is not None) and (sigma is not None):
-            kappa = mu * (1 - mu) / sigma ** 2 - 1
-            alpha = mu * kappa
-            beta = (1 - mu) * kappa
-        else:
-            raise ValueError('Incompatible parameterization. Either use alpha '
-                             'and beta, or mu and sigma to specify distribution.')
-        return alpha, beta
-
-    def simulate(self, initial_state, window, step, rand_seed=None):
-        if rand_seed == None:
-            np.random.seed(
-                int(str(window) + str(step) + str(int(np.sum(initial_state)*100))))
-        else:
-            np.random.seed(rand_seed)
-
-        protein_param = self.true_model_params[step + 1]['protein'][window]
-        impurity_param = self.true_model_params[step + 1]['impurity'][window]
-        removal_rate_protein = np.random.beta(protein_param[0], protein_param[1])
-        removal_rate_impurity = np.random.beta(impurity_param[0], impurity_param[1])
-
-        protein = initial_state[0] * removal_rate_protein
-        impurity = initial_state[1] * removal_rate_impurity
-        logging.info('protein removal rate: {:.2f}; impurity removal rate: {:.2f}'.format(removal_rate_protein,
-                                                                                          removal_rate_impurity))
-        return [protein, impurity]
 
 
 def UcbTreePolicy(root, c):
@@ -422,6 +239,58 @@ def linearMDP(K, H, initial_state, actions, actions_downstream, lambuda, d, vect
     return store_A, store_w, mean_r, action_k, V, L_time
 
 
+def Backup(node,simulation_reward):
+    node.V += simulation_reward
+    node.N += 1
+    if node.parent:
+        Backup(node.parent,simulation_reward)
+
+
+def mapvector_reduce_action(vector_map,action):
+    vector_map[actions.index(action)+len(products)-1+len(impuritys)-1+len(cell_densitys)-1] = 0
+    return vector_map
+
+
+def Createmapvector(d,product,impurity,cell_density,upstream_done):
+    vector_map = np.zeros(d).reshape(d,1)
+    for i in range(1,len(products)):
+        if product > products[i]:
+            continue
+        else:
+            vector_map[i-1] = 1
+            break
+    for j in range(1,len(impuritys)):
+        if impurity > impuritys[j]:
+            continue
+        else:
+            vector_map[j-1+len(products)-1] = 1
+            break
+    if not upstream_done:
+        for n in range(len(cell_densitys)):
+            if cell_density > cell_densitys[n]:
+                continue
+            else:
+                vector_map[n-1+len(products)-1+len(impuritys)-1] = 1
+                break
+    #vector_map[actions.index(action)+len(products)-1+len(impuritys)-1+len(cell_densitys)-1] = 1
+    return vector_map
+
+
+def mapvector_action(vector_map,action):
+    vector_map[actions.index(action)+len(products)-1+len(impuritys)-1+len(cell_densitys)-1] = 1
+    return vector_map
+
+
+def mapvector_action_down(vector_map,action):
+    vector_map[actions_downstream .index(action)+len(products)-1+len(impuritys)-1+len(cell_densitys)-1+len(actions)] = 1
+    return vector_map
+
+
+def mapvector_reduce_action_down(vector_map,action):
+    vector_map[actions_downstream .index(action)+len(products)-1+len(impuritys)-1+len(cell_densitys)-1+len(actions)] = 0
+    return vector_map
+
+
 def MCTS(protein, impurity, x, c, action_set, cf, w, state, UPB, real_time):
     start1 = time.time()
     a = []
@@ -465,8 +334,14 @@ def MCTS(protein, impurity, x, c, action_set, cf, w, state, UPB, real_time):
     return re, sig_time
 
 
+def find(root,c,a):
+    if root.dicsubnode:
+        action_thistime = BestChild(root,c)
+        a.append(action_thistime)
+        find(root.dicsubnode[action_thistime],c,a)
+
+
 if __name__ == '__main__':
-    import matplotlib.pyplot as plt
     for i in range(30):
         initial_state = [0.4, 10, 5, 0, 0., 0, 5]  # [3.4, 40, 5, 1.5]
         simulator = cho_cell_culture_simulator(initial_state, delta_t=int(360 / number_steps), num_action=1,
