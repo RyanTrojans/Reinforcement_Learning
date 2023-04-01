@@ -1,16 +1,16 @@
 import numpy as np
 import pandas as pd
 import time
-from .environment import process_env
-from .simulator import cho_cell_culture_simulator
-from .chromatography import chromatography
+from BNStructureAnalysis.src.simulator.environment import process_env
+from BNStructureAnalysis.src.simulator.simulator import cho_cell_culture_simulator
+from BNStructureAnalysis.src.simulator.chromatography import chromatography
 from BNStructureAnalysis.src.simulator.Util import *
 import matplotlib.pyplot as plt
 import logging
 import copy
 import math
 import random
-from .constants import (
+from BNStructureAnalysis.src.simulator.constants import (
     number_steps,
     actions,
     products,
@@ -19,6 +19,16 @@ from .constants import (
     actions_downstream,
     vector_cartesian,
     product_r,
+    c,
+    boolvalue,
+    limitation_P,
+    limitation_I,
+    cf,
+    aita,
+    pdd,
+    UPB,
+    cl,
+    purity_r,
 )
 
 
@@ -341,6 +351,35 @@ def find(root,c,a):
         find(root.dicsubnode[action_thistime],c,a)
 
 
+def Createmapvector_MCTS(d,product,impurity,cell_density,action,time):
+    vector_map = np.zeros(d).reshape(d,1)
+    for i in range(1,len(products)):
+        if product > products[i]:
+            continue
+        else:
+            vector_map[i-1] = 1
+            break
+    for j in range(1,len(impuritys)):
+        if impurity > impuritys[j]:
+            continue
+        else:
+            vector_map[j-1+len(products)-1] = 1
+            break
+    if time < number_steps:
+        for n in range(len(cell_densitys)):
+            if cell_density > cell_densitys[n]:
+                continue
+            else:
+                vector_map[n-1+len(products)-1+len(impuritys)-1] = 1
+                break
+        vector_map[actions.index(action)+len(products)-1+len(impuritys)-1+len(cell_densitys)-1] = 1
+    elif time == number_steps:
+        vector_map[actions.index(action)+len(products)-1+len(impuritys)-1+len(cell_densitys)-1] = 1
+    else:
+        vector_map[actions_downstream.index(action)+len(products)-1+len(impuritys)-1+len(cell_densitys)-1+len(actions)] = 1
+    return vector_map
+
+
 if __name__ == '__main__':
     for i in range(30):
         initial_state = [0.4, 10, 5, 0, 0., 0, 5]  # [3.4, 40, 5, 1.5]
@@ -366,8 +405,7 @@ if __name__ == '__main__':
         simulator_actions_upstream = list(np.around(np.linspace(0.01, 0.1, 100), decimals=4))
         simulator_actions_downstream = list(np.around(np.linspace(1, 4, 4), decimals=0))
         cur_state = env.state
-        action, sig_time = MCTS(cur_state[4], cur_state[5], cur_state[0], c, action_set, cf, w, cur_state, UPB,
-                                real_time)
+        action, sig_time = MCTS(cur_state[4], cur_state[5], cur_state[0], c, action_set, cf, w, cur_state, UPB, real_time)
         all_episode_time.append(sig_time)
     # print(np.sum(reward_buffer))
     #

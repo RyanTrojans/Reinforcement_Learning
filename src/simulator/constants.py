@@ -8,4 +8,24 @@ impuritys = list(np.around(np.linspace(0,0.01,11),3)) + list(np.around(np.linspa
 cell_densitys = list(np.linspace(0,80,81))
 actions_downstream = list(np.around(np.linspace(1,4,4), decimals=0))
 vector_cartesian = products+impuritys+cell_densitys+actions+actions_downstream
+# UCB parameter
+c = 1
+# set for Break current planning with probability
+boolvalue = [True, False]
+limitation_P = 1000
+limitation_I = 1000
+# boundary
+cf = 2
+# purity
+aita = 2
+pdd = 100000
+# dpp = 48
+# the unit price of bioProduct
+UPB = 30
+# yield penalty cost parameter
+cl = 50
+# boundary = 1
+# 20-60
 product_r = 50
+# 0.85 - 0.93
+purity_r = 0.85
