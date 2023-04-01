@@ -2,6 +2,9 @@ import numpy as np
 import logging
 from BNStructureAnalysis.src.simulator.Util import *
 
+logger = logging.getLogger()
+logger.setLevel(20)
+
 
 # Create ENV
 class process_env:

@@ -3,13 +3,16 @@ import numpy as np
 import logging
 from BNStructureAnalysis.src.simulator.Util import *
 
+logger = logging.getLogger()
+logger.setLevel(20)
+
 
 class chromatography:
     def __init__(self,
                  noise_level=0.05,
                  horizon=3):
         # define parameters in bioreactor model
-        chrom_dat = pd.read_csv(r'aa.csv')
+        chrom_dat = pd.read_csv(r'/Users/ranyide/Desktop/reinforcementProject/BNStructureAnalysis/src/simulator/aa.csv')
         chrom_dat = select_action(chrom_dat)
         print(chrom_dat)
         self.chrom1_protein = [self.get_alpha_beta(mu=q_p, sigma=noise_level * q_p) for q_p, q_i in chrom_dat]

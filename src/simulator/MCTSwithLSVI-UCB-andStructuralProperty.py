@@ -29,6 +29,8 @@ from BNStructureAnalysis.src.simulator.constants import (
     action_dic_downstream,
     inverse_action_dic,
     inverse_action_dic_downstream,
+    boolvalue,
+    limitation_P,
     maxmium_value,
     d,
     H,
@@ -39,7 +41,6 @@ from BNStructureAnalysis.src.simulator.constants import (
 
 
 class TreeNode:
-
     def __init__(self,p:float,i:float,x:float,action_set:list,dicsubnode:dict,state:list,time:int,reward):
         self.V = 0
         self.N = 1
@@ -53,33 +54,54 @@ class TreeNode:
         self.reward = reward
         self.dicsubnode = dicsubnode
         self.action_set = action_set
-
     def addsubnode(self,node,key):
         self.dicsubnode[key] = node
 
 
-def UcbTreePolicy(root, c):
+def Backup(node,simulation_reward):
+    node.V += simulation_reward
+    node.N += 1
+    if node.parent:
+        Backup(node.parent,simulation_reward)
+
+
+def BestChild(node,c):
+    maxm = float('-inf')
+    re = None
+    if node.dicsubnode:
+        for key,subnode in node.dicsubnode.items():
+            UCBvalue = subnode.V/subnode.N + c*math.sqrt(2*math.log(node.N)/subnode.N)
+            if UCBvalue > maxm:
+                maxm = UCBvalue
+                re = key
+    return re
+
+
+def find(root,c,a):
+    if root.dicsubnode:
+        action_thistime = BestChild(root,c)
+        a.append(action_thistime)
+        find(root.dicsubnode[action_thistime],c,a)
+
+
+def UCBTreePolicy(root, c):
     node = root
     if len(node.action_set):  # not fully expanded
         simulator = cho_cell_culture_simulator(node.state, delta_t=int(360 / number_steps), num_action=1,
                                                noise_level=2500)
         chrom = chromatography()
         env = process_env(simulator, chrom,
-                          # sensitive hyper parameters
-                          upstream_variable_cost=2,
+                          upstream_variable_cost=2,  # sensitive hyperparameters
                           downstream_variable_cost=10,
                           product_price=30,
                           failure_cost=200,
-                          # sensitive hyper parameters 20 -60
-                          product_requirement=50,
-                          # sensitive hyper parameters 0.85 - 0.93
-                          purity_requirement=0.85,
-                          # sensitive hyper parameters
-                          yield_penalty_cost=50, )
+                          product_requirement=50,  # sensitive hyperparameters 20 -60
+                          purity_requirement=0.85,  # sensitive hyperparameters 0.85 - 0.93
+                          yield_penalty_cost=50, )  # sensitive hyperparameters
 
         if node.time >= number_steps:
             dui = {0: 360, 1: 361, 2: 361}
-            env.t = dui[node.time]
+            env.t = dui[node.time - number_steps]
             random.shuffle(node.action_set)
             action_value_selected = node.action_set.pop()
             #                 print(node.time,node.action_set)
@@ -111,6 +133,7 @@ def UcbTreePolicy(root, c):
                 temp_state = copy.deepcopy(next_state)
                 next_state = [temp_state[4] * temp_state[6], temp_state[5] * temp_state[6]]
             newnode = TreeNode(newnode_p, newnode_i, newnode_x, this, {}, next_state, node.time + 1, reward)
+            # print('sdfsdfsdfsdf',newnode.time,newnode.action_set)
             newnode.action = action_value_selected
             node.addsubnode(newnode, action_lable)
             newnode.parent = node
@@ -124,16 +147,83 @@ def UcbTreePolicy(root, c):
             return node, node.reward, False
 
 
-def BestChild(node, c):
-    maxm = float('-inf')
-    re = None
-    if node.dicsubnode:
-        for key,subnode in node.dicsubnode.items():
-            UCBvalue = subnode.V/subnode.N + c*math.sqrt(2*math.log(node.N)/subnode.N)
-            if UCBvalue > maxm:
-                maxm = UCBvalue
-                re = key
-    return re
+def Probability_base_on_Projection_of_Euclidean(nowlocation,boundary):
+    vec1 = np.array(nowlocation)
+    vec2 = np.array(boundary)
+    Euclidean = np.linalg.norm(vec1 - vec2)
+    projection_value = 0.5#f(Euclidean)I do not know this function
+    probability = 1 - projection_value
+    return probability
+
+
+def Createmapvector_MCTS(d,product,impurity,cell_density,action,time):
+    vector_map = np.zeros(d).reshape(d,1)
+    for i in range(1,len(products)):
+        if product > products[i]:
+            continue
+        else:
+            vector_map[i-1] = 1
+            break
+    for j in range(1,len(impuritys)):
+        if impurity > impuritys[j]:
+            continue
+        else:
+            vector_map[j-1+len(products)-1] = 1
+            break
+    if time < number_steps:
+        for n in range(len(cell_densitys)):
+            if cell_density > cell_densitys[n]:
+                continue
+            else:
+                vector_map[n-1+len(products)-1+len(impuritys)-1] = 1
+                break
+        vector_map[actions.index(action)+len(products)-1+len(impuritys)-1+len(cell_densitys)-1] = 1
+    elif time == number_steps:
+        vector_map[actions.index(action)+len(products)-1+len(impuritys)-1+len(cell_densitys)-1] = 1
+    else:
+        vector_map[actions_downstream.index(action)+len(products)-1+len(impuritys)-1+len(cell_densitys)-1+len(actions)] = 1
+    return vector_map
+
+def mapvector_reduce_action(vector_map,action):
+    vector_map[actions.index(action)+len(products)-1+len(impuritys)-1+len(cell_densitys)-1] = 0
+    return vector_map
+
+def mapvector_reduce_action_down(vector_map,action):
+    vector_map[actions_downstream .index(action)+len(products)-1+len(impuritys)-1+len(cell_densitys)-1+len(actions)] = 0
+    return vector_map
+
+def mapvector_action_down(vector_map,action):
+    vector_map[actions_downstream .index(action)+len(products)-1+len(impuritys)-1+len(cell_densitys)-1+len(actions)] = 1
+    return vector_map
+
+def Createmapvector(d,product,impurity,cell_density,upstream_done):
+    vector_map = np.zeros(d).reshape(d,1)
+    for i in range(1,len(products)):
+        if product > products[i]:
+            continue
+        else:
+            vector_map[i-1] = 1
+            break
+    for j in range(1,len(impuritys)):
+        if impurity > impuritys[j]:
+            continue
+        else:
+            vector_map[j-1+len(products)-1] = 1
+            break
+    if not upstream_done:
+        for n in range(len(cell_densitys)):
+            if cell_density > cell_densitys[n]:
+                continue
+            else:
+                vector_map[n-1+len(products)-1+len(impuritys)-1] = 1
+                break
+    #vector_map[actions.index(action)+len(products)-1+len(impuritys)-1+len(cell_densitys)-1] = 1
+    return vector_map
+
+def mapvector_action(vector_map,action):
+    vector_map[actions.index(action)+len(products)-1+len(impuritys)-1+len(cell_densitys)-1] = 1
+    #print(actions.index(action)+len(products)-1+len(impuritys)-1+len(cell_densitys)-1)
+    return vector_map
 
 
 def linearMDP(K, H, initial_state, actions, actions_downstream, lambuda, d, vector_cartesian, beta, maxmium_value,
@@ -246,7 +336,6 @@ def linearMDP(K, H, initial_state, actions, actions_downstream, lambuda, d, vect
                 vector_map = mapvector_action_down(vector_map, best_action)
                 store_state_action_map.append(np.array(vector_map, copy=True))
                 store_vector_map_k.append(np.array(vector_map, copy=True))
-                print(best_action)
                 next_state, reward, done, upstream_done = env.step(int(best_action))
                 r.append(reward)
                 r_k.append(reward)
@@ -259,189 +348,134 @@ def linearMDP(K, H, initial_state, actions, actions_downstream, lambuda, d, vect
     return store_A, store_w, mean_r, action_k, V, L_time
 
 
-def Backup(node,simulation_reward):
-    node.V += simulation_reward
-    node.N += 1
-    if node.parent:
-        Backup(node.parent,simulation_reward)
-
-
-def mapvector_reduce_action(vector_map,action):
-    vector_map[actions.index(action)+len(products)-1+len(impuritys)-1+len(cell_densitys)-1] = 0
-    return vector_map
-
-
-def Createmapvector(d,product,impurity,cell_density,upstream_done):
-    vector_map = np.zeros(d).reshape(d,1)
-    for i in range(1,len(products)):
-        if product > products[i]:
-            continue
-        else:
-            vector_map[i-1] = 1
-            break
-    for j in range(1,len(impuritys)):
-        if impurity > impuritys[j]:
-            continue
-        else:
-            vector_map[j-1+len(products)-1] = 1
-            break
-    if not upstream_done:
-        for n in range(len(cell_densitys)):
-            if cell_density > cell_densitys[n]:
-                continue
-            else:
-                vector_map[n-1+len(products)-1+len(impuritys)-1] = 1
-                break
-    #vector_map[actions.index(action)+len(products)-1+len(impuritys)-1+len(cell_densitys)-1] = 1
-    return vector_map
-
-
-def mapvector_action(vector_map,action):
-    vector_map[actions.index(action)+len(products)-1+len(impuritys)-1+len(cell_densitys)-1] = 1
-    return vector_map
-
-
-def mapvector_action_down(vector_map,action):
-    vector_map[actions_downstream .index(action)+len(products)-1+len(impuritys)-1+len(cell_densitys)-1+len(actions)] = 1
-    return vector_map
-
-
-def mapvector_reduce_action_down(vector_map,action):
-    vector_map[actions_downstream .index(action)+len(products)-1+len(impuritys)-1+len(cell_densitys)-1+len(actions)] = 0
-    return vector_map
-
-
-def MCTS(protein, impurity, x, c, action_set, cf, w, state, UPB, real_time):
-    start1 = time.time()
+def MCTS(p, i, x, c, action_set, cf, w, state, UPB, real_time):
     a = []
     if real_time >= number_steps:
         thisnodeaction_set = copy.deepcopy(actions_downstream)
     else:
         thisnodeaction_set = copy.deepcopy(actions)
-    root = TreeNode(protein, impurity, x, thisnodeaction_set, {}, state, copy.deepcopy(real_time), 0)
-    sig_time = []
+    root = TreeNode(p, i, x, thisnodeaction_set, {}, state, copy.deepcopy(real_time), 0)
     for episode in range(50):
-        start = time.time()
         cur_node = root
         cur_r = 0
         planning = number_steps + 3
         for j in range(real_time, planning):
-            node, cum_r_temp, whether_continue = UcbTreePolicy(cur_node, c)
+            node, cum_r_temp, whether_continue = UCBTreePolicy(cur_node, c)
             cur_r += cum_r_temp
             if whether_continue:
                 break
+            bound_i = (1 - purity_r) / purity_r * node.p
+            boundary = []
+            boundary.append(50)
+            boundary.append(bound_i)
+            if node.p <= limitation_P and node.p >= 50 and node.i < bound_i:
+                find(root, c, a)
+                if real_time < number_steps:
+                    re = inverse_action_dic[a[0]]
+                else:
+                    re = inverse_action_dic_downstream[a[0]]
+                return re
+            elif node.p < 50 and node.i < bound_i:
+                find(root, c, a)
+                if real_time < number_steps:
+                    re = inverse_action_dic[a[0]]
+                else:
+                    re = inverse_action_dic_downstream[a[0]]
+                return re
+            elif node.i > bound_i:
+                nowlocation = [node.p, node.i]
+                probability_continue = Probability_base_on_Projection_of_Euclidean(nowlocation, boundary)
+                if not np.random.choice(boolvalue, 1, p=[probability_continue, 1 - probability_continue])[0]:
+                    find(root, c, a)
+                    if real_time < number_steps:
+                        re = inverse_action_dic[a[0]]
+                    else:
+                        re = inverse_action_dic_downstream[a[0]]
+                    return re
+                else:
+                    cur_node = node
+        bound_i = (1 - purity_r) / purity_r * node.p
+        boundary = []
+        boundary.append(50)
+        boundary.append(bound_i)
+        if node.p <= limitation_P and node.p >= 50 and node.i < bound_i:
+            find(root, c, a)
+            if real_time < number_steps:
+                re = inverse_action_dic[a[0]]
             else:
-                cur_node = node
-
+                re = inverse_action_dic_downstream[a[0]]
+            return re
+        elif node.p < 50 and node.i < bound_i:
+            find(root, c, a)
+            if real_time < number_steps:
+                re = inverse_action_dic[a[0]]
+            else:
+                re = inverse_action_dic_downstream[a[0]]
+            return re
+        elif node.i > bound_i:
+            nowlocation = [node.p, node.i]
+            probability_continue = Probability_base_on_Projection_of_Euclidean(nowlocation, boundary)
+            if not np.random.choice(boolvalue, 1, p=[probability_continue, 1 - probability_continue])[0]:
+                find(root, c, a)
+                if real_time < number_steps:
+                    re = inverse_action_dic[a[0]]
+                else:
+                    re = inverse_action_dic_downstream[a[0]]
+                return re
         if node.time < planning:
             thistime_w = np.array(w[node.time - 1], copy=True)
             thistime_w = thistime_w.reshape(1, len(w[0]))
+            # consider one tree or one starting points to get starting.
             simulation_reward = cur_r + np.dot(thistime_w, Createmapvector_MCTS(len(w[0]), node.parent.p, node.parent.i,
                                                                                 node.parent.x, node.action, node.time))
         else:
             simulation_reward = node.p * UPB + cur_r
         Backup(node, simulation_reward)
-        end = time.time()
-        sig_time.append(end - start)
 
     find(root, c, a)
     if real_time < number_steps:
         re = inverse_action_dic[a[0]]
     else:
         re = inverse_action_dic_downstream[a[0]]
-    end1 = time.time()
-    all_time.append(end1 - start1)
-    return re, sig_time
-
-
-def find(root,c,a):
-    if root.dicsubnode:
-        action_thistime = BestChild(root,c)
-        a.append(action_thistime)
-        find(root.dicsubnode[action_thistime],c,a)
-
-
-def Createmapvector_MCTS(d,product,impurity,cell_density,action,time):
-    vector_map = np.zeros(d).reshape(d,1)
-    for i in range(1,len(products)):
-        if product > products[i]:
-            continue
-        else:
-            vector_map[i-1] = 1
-            break
-    for j in range(1,len(impuritys)):
-        if impurity > impuritys[j]:
-            continue
-        else:
-            vector_map[j-1+len(products)-1] = 1
-            break
-    if time < number_steps:
-        for n in range(len(cell_densitys)):
-            if cell_density > cell_densitys[n]:
-                continue
-            else:
-                vector_map[n-1+len(products)-1+len(impuritys)-1] = 1
-                break
-        vector_map[actions.index(action)+len(products)-1+len(impuritys)-1+len(cell_densitys)-1] = 1
-    elif time == number_steps:
-        vector_map[actions.index(action)+len(products)-1+len(impuritys)-1+len(cell_densitys)-1] = 1
-    else:
-        vector_map[actions_downstream.index(action)+len(products)-1+len(impuritys)-1+len(cell_densitys)-1+len(actions)] = 1
-    return vector_map
-
-initial_state = [0.4, 10, 5, 0, 0., 0, 5]  # [3.4, 40, 5, 1.5]
-store_A, w, mean_r, action_k, V, L_time = linearMDP(K, H, initial_state, actions, actions_downstream, lambuda,
-                                                        d, vector_cartesian, beta, maxmium_value, product_r,
-                                                        purity_r)
+    return re
 
 
 if __name__ == '__main__':
     all_time = []
     all_episode_time = []
-
+    initial_state = [0.4, 10, 5, 0, 0., 0, 5]
+    store_A, w, mean_r, action_k, V, L_time = linearMDP(K, H, initial_state, actions, actions_downstream, lambuda, d,
+                                                        vector_cartesian, beta, maxmium_value, product_r, purity_r)
     for i in range(30):
-        initial_state = [0.4, 10, 5, 0, 0., 0, 5]  # [3.4, 40, 5, 1.5]
-        simulator = cho_cell_culture_simulator(initial_state, delta_t=int(360 / number_steps), num_action=1,
-                                               noise_level=2500)
+        simulator = cho_cell_culture_simulator(initial_state, delta_t=int(360/number_steps), num_action=1, noise_level=2500)
         chrom = chromatography()
         env = process_env(simulator, chrom,
-                          # sensitive hyperparameters
-                          upstream_variable_cost=2,
+                          upstream_variable_cost=2,  # sensitive hyperparameters
                           downstream_variable_cost=10,
                           product_price=30,
                           failure_cost=200,
-                          # sensitive hyperparameters 20 -60
-                          product_requirement=50,
-                          # sensitive hyperparameters 0.85 - 0.93
-                          purity_requirement=0.85,
-                          # sensitive hyperparameters
-                          yield_penalty_cost=50,
+                          product_requirement=50,  # sensitive hyperparameters 20 -60
+                          purity_requirement=0.85,  # sensitive hyperparameters 0.85 - 0.93
+                          yield_penalty_cost=50,  # sensitive hyperparameters
                           )
-        # L/h action space [0, 0.05]
-        action = 0.05
+        action = 0.05  # L/h action space [0, 0.05]
         done, upstream_done = False, False
         state_buffer = []
         next_state_buffer = []
         action_buffer = []
         reward_buffer = []
         real_time = 0
-        simulator_actions_upstream = list(np.around(np.linspace(0.01, 0.1, 100), decimals=4))
-        simulator_actions_downstream = list(np.around(np.linspace(1, 4, 4), decimals=0))
+        simulator_actions_upstream = list(np.around(np.linspace(0.01,0.1,100),decimals=4))
+        simulator_actions_downstream = list(np.around(np.linspace(1,4,4),decimals=0))
         cur_state = env.state
-        action, sig_time = MCTS(cur_state[4], cur_state[5], cur_state[0], c, action_set, cf, w, cur_state, UPB, real_time)
-        all_episode_time.append(sig_time)
+        a = time.time()
+        action = MCTS(cur_state[4],cur_state[5],cur_state[0],c,action_set,cf,w,cur_state,UPB,real_time)
+        b = time.time()
+        all_time.append(b-a)
 
-    os.chdir(r'computational_time_compare/MCTSLSVIUCB_33')
+    os.chdir(r'/Users/ranyide/Desktop/reinforcementProject/BNStructureAnalysis/src/simulator/computational_time_compare/SPMCTS_33')
 
-    np.save('L_time_18.npy', L_time)
-    np.save('all_time_18.npy', all_time)
-    np.save('all_episode_time_18 .npy', all_episode_time)
-    np.save('w.npy_18', w)
-
-    # print(np.sum(reward_buffer))
-    #
-    # print('upstream: ', next_state_buffer[-4], 'downstream: ', np.array(next_state_buffer[-4:]))
-    # print('purity: ', next_state_buffer[-1][-2] / np.sum(next_state_buffer[-1]))
-    # plt.plot(next_state_buffer[:360], label=simulator.label)
-    # plt.legend()
-    # plt.show()
+    np.save('L_time_new.npy', L_time)
+    np.save('all_time_new.npy', all_time)
+    # np.save('all_episode_time_18.npy',all_episode_time)
+    np.save('w_new.npy_18', w)
