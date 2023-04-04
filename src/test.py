@@ -18,7 +18,11 @@ w = np.load('w.npy')
 
 
 def MCTS_LSVI_UCB(state, real_time, max_iters=100):
-    p, i, x = state[4], state[5], state[0]
+    if len(state) > 3:
+        p, i, x = state[4], state[5], state[0]
+    else:
+        p, i, x = state[0], state[1], 0
+
     if real_time >= number_steps:
         thisnodeaction_set = copy.deepcopy(actions_downstream)
     else:
@@ -32,18 +36,25 @@ def MCTS_LSVI_UCB(state, real_time, max_iters=100):
         cur_r += node.reward
         # cur_r = node.reward
 
+        n = node
+        cur_r = 0
+        while True:
+            cur_r += n.reward
+            n = n.parent
+            if not n: break
+
         planning = number_steps + 3
         if node.time < planning and node.parent:
             thistime_w = np.array(w[node.time - 1], copy=True)
             thistime_w = thistime_w.reshape(1, len(w[0]))
             # consider one tree or one starting points to get starting.
             simulation_reward = cur_r + np.dot(thistime_w, Createmapvector_MCTS(len(w[0]), node.parent.p, node.parent.i,
-                                                                                node.parent.x, node.action, node.time))
+                                                                                node.parent.x, node.action, node.time)).item()
         else:
             simulation_reward = node.p * UPB + cur_r
 
-        simulation_reward = node.reward
-        simulation_reward = RolloutPolicy(node)
+        # simulation_reward = node.reward
+        # simulation_reward = RolloutPolicy(node)
 
         Backup(node, simulation_reward)
 
@@ -141,6 +152,13 @@ def Backup(v: TreeNode, c):
         v = v.parent
 
 
+def Probability_base_on_Projection_of_Euclidean(nowlocation,boundary):
+    vec1 = np.array(nowlocation)
+    vec2 = np.array(boundary)
+    Euclidean = np.linalg.norm(vec1 - vec2)
+    probability = 1 / (1 + math.exp(-Euclidean))
+    return probability
+
 def ContinuePlanning(node: TreeNode, t0=None, d_p=3):
     t = node.time
 
@@ -196,7 +214,10 @@ def main():
             t = node.time
 
             state = s
-            p, i, x = state[4], state[5], state[0]
+            if len(s) > 3:
+                p, i, x = state[4], state[5], state[0]
+            else:
+                p, i, x = state[0], state[1], 0
 
             # if t < number_steps:
             P.append(p)
@@ -223,10 +244,10 @@ def plot(y, p, i, x):
     ax = plt.subplot()
 
     t = range(1, len(y) + 1)
-    ax.plot(t, y, '-', label='R')
-    ax.plot(t, p, '-', label='P')
-    ax.plot(t, i, '-', label='I')
-    ax.plot(t, x, '-', label='X')
+    ax.plot(t, y, '-', label='Cumulative Reward')
+    ax.plot(t, p, '-', label='Protein')
+    ax.plot(t, i, '-', label='Impurity')
+    ax.plot(t, x, '-', label='Cell Density')
 
     plt.xlabel('Time')
     # plt.ylabel('Cumulative Reward')
