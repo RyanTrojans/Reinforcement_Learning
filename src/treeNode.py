@@ -1,3 +1,6 @@
+import copy
+
+
 class TreeNode:
 
     def __init__(self,p:float,i:float,x:float,action_set:list,dicsubnode:dict,state:list,time:int,reward):
@@ -13,6 +16,7 @@ class TreeNode:
         self.reward = reward
         self.dicsubnode = dicsubnode
         self.action_set = action_set
+        self.action_set_bak = copy.deepcopy(action_set)
 
     def addsubnode(self,node,key):
         self.dicsubnode[key] = node
