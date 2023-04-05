@@ -394,6 +394,8 @@ def linearMDP(K, H, initial_state, actions, actions_downstream, lambuda, d, vect
 
 # Question: what's the meaning of the parameter x(cell density)
 def MCTS(p, i, x, c, action_set, cf, w, state, UPB, real_time):
+    logging.info(
+        'weight linear {} s'.format(w))
     a = []
     if real_time >= number_steps:
         thisnodeaction_set = copy.deepcopy(actions_downstream)
