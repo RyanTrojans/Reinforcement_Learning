@@ -367,6 +367,7 @@ def linearMDP(K, H, initial_state, actions, actions_downstream, lambuda, d, vect
                     # print(TT@vector_map)
                     # print(beta*np.sqrt(map_TT@store_inverse_A[t]@vector_map))
                     Q_action = TT @ vector_map + beta * np.sqrt(map_TT @ store_inverse_A[t] @ vector_map)
+                    print('V:', vector_map)
                     # print(Q_action,action)
                     if Q_action > Q_t:
                         Q_t = Q_action

@@ -169,19 +169,19 @@ def ContinuePlanning(node: TreeNode, t0=None, d_p=16):
     if t >= H:
         return False
 
-    bound_i = (1 - purity_r) / purity_r * node.p
-    boundary = []
-    boundary.append(50)
-    boundary.append(bound_i)
-    if node.p <= limitation_P and node.p >= 50 and node.i < bound_i:
-        return False
-    elif node.p < 50 and node.i < bound_i:
-        return False
-    elif node.i > bound_i:
-        nowlocation = [node.p, node.i]
-        probability_continue = Probability_base_on_Projection_of_Euclidean(nowlocation, boundary)
-        if random.random() < 1 - probability_continue:
-            return False
+    # bound_i = (1 - purity_r) / purity_r * node.p
+    # boundary = []
+    # boundary.append(50)
+    # boundary.append(bound_i)
+    # if node.p <= limitation_P and node.p >= 50 and node.i < bound_i:
+    #     return False
+    # elif node.p < 50 and node.i < bound_i:
+    #     return False
+    # elif node.i > bound_i:
+    #     nowlocation = [node.p, node.i]
+    #     probability_continue = Probability_base_on_Projection_of_Euclidean(nowlocation, boundary)
+    #     if random.random() < 1 - probability_continue:
+    #         return False
     return True
 
 
@@ -240,7 +240,7 @@ def plot(y, p, i, x):
 
     plt.gcf().canvas.mpl_connect('key_press_event', press_key)
 
-    plt.title('Fig')
+    plt.title('Fig-NoBoundary')
 
     ax = plt.subplot()
 
