@@ -1,9 +1,7 @@
 import numpy as np
 import pandas as pd
 import time
-from BNStructureAnalysis.src.environment import process_env
-from BNStructureAnalysis.src.simulator import cho_cell_culture_simulator
-from BNStructureAnalysis.src.chromatography import chromatography
+from BNStructureAnalysis.src.simulator import process_env, cho_cell_culture_simulator, chromatography
 from BNStructureAnalysis.src.treeNode import TreeNode
 from BNStructureAnalysis.src.Util import *
 import matplotlib.pyplot as plt
@@ -42,9 +40,9 @@ from BNStructureAnalysis.src.constants import (
 def UcbTreePolicy(root, c):
     node = root
     if len(node.action_set):  # not fully expanded
-        simulator = cho_cell_culture_simulator(node.state, delta_t=int(360 / number_steps), num_action=1,
-                                               noise_level=2500)
-        chrom = chromatography()
+        # simulator = cho_cell_culture_simulator(node.state, delta_t=int(360 / number_steps), num_action=1,
+        #                                        noise_level=2500)
+        # chrom = chromatography()
         env = process_env(simulator, chrom,
                           # sensitive hyper parameters
                           upstream_variable_cost=2,

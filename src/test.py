@@ -7,14 +7,16 @@ import numpy as np
 
 from BNStructureAnalysis.src.MCTSwithLSVI_UCB_andStructuralProperty import Probability_base_on_Projection_of_Euclidean, \
     BestChild, Createmapvector_MCTS
-from BNStructureAnalysis.src.chromatography import chromatography
+# from BNStructureAnalysis.src.chromatography import chromatography
 from BNStructureAnalysis.src.constants import number_steps, actions_downstream, actions, purity_r, limitation_P, \
     action_dic_downstream, action_dic, c, UPB, H, cf, limitation_I
-from BNStructureAnalysis.src.environment import process_env
-from BNStructureAnalysis.src.simulator import cho_cell_culture_simulator
+from BNStructureAnalysis.src.simulator import process_env, chromatography, cho_cell_culture_simulator
+# from BNStructureAnalysis.src.environment import process_env
+# from BNStructureAnalysis.src.simulator import cho_cell_culture_simulator
 from BNStructureAnalysis.src.treeNode import TreeNode
 
 w = np.load('w.npy')
+total_node_reward = []
 
 def find_risk_boundary(node):
     from scipy.optimize import Bounds, LinearConstraint, NonlinearConstraint, minimize
@@ -29,6 +31,7 @@ def find_risk_boundary(node):
                                         node.time)
         # print('featuresfeatures ', features)
         # current state's Value
+        # 没有
         y = np.dot(thistime_w.ravel(), features.ravel()).item()
         return -y
 
@@ -129,7 +132,9 @@ def Expand(node: TreeNode, action=None):
             action_value_selected = node.action_set.pop()
         #                 print(node.time,node.action_set)
         #                 print('action_value_selected',action_value_selected,node.time)
+        print('action_dic_downstream ', action_dic_downstream)
         action_lable = action_dic_downstream[action_value_selected]
+        print('action_dic_downstream action_lable ', action_lable)
         next_state, reward, done, upstream_done = env.step(int(action_value_selected))
         newnode_p = next_state[0]
         newnode_i = next_state[1]
@@ -194,8 +199,9 @@ def Probability_base_on_Projection_of_Euclidean(nowlocation, boundary):
     probability = 1 - probability
     return probability
 
+# V function maximize of action  w的最大值
 
-def ContinuePlanning(node: TreeNode, t0=None, d_p=16):
+def ContinuePlanning(node: TreeNode, t0=None, d_p=3):
     t = node.time
 
     if t0 is not None:
@@ -224,32 +230,33 @@ def ContinuePlanning(node: TreeNode, t0=None, d_p=16):
     #     return random.random() < 0.5
 
     # if node.i < bound_i:
-    if eta_t >= eta_d:
-        if p_t >= p_d:  # <= limitation_P:
-            # R1
-            return False
-        else:
-            return False
-    else:
-        nowlocation = [node.p, node.i]
-
+    # if eta_t >= eta_d:
+    #     if p_t >= p_d:  # <= limitation_P:
+    #         # R1
+    #         return False
+    #     else:
+    #         return False
+    return True
+    # else:
+        # nowlocation = [node.p, node.i]
+        #
+        # # bound_i = (1 - purity_r) / purity_r * node.p
+        # # boundary = [p_d, bound_i]
+        #
         # bound_i = (1 - purity_r) / purity_r * node.p
+        # # if node not the root
+        # if node.action:
+        #     bound_i = find_risk_boundary(node)
+        #     # print("bound_i:", bound_i)
         # boundary = [p_d, bound_i]
-
-        bound_i = (1 - purity_r) / purity_r * node.p
-        # if node not the root
-        if node.action:
-            bound_i = find_risk_boundary(node)
-            # print("bound_i:", bound_i)
-        boundary = [p_d, bound_i]
-
-        # probability_continue = Probability_base_on_Projection_of_Euclidean(nowlocation, boundary)
-        # return random.random() < probability_continue
-        vec1 = np.array(nowlocation)
-        vec2 = np.array(boundary)
-        Euclidean = np.linalg.norm(vec1 - vec2)
-        prob = 1 / (1 + math.exp(-Euclidean))
-        return random.random() < prob
+        #
+        # # probability_continue = Probability_base_on_Projection_of_Euclidean(nowlocation, boundary)
+        # # return random.random() < probability_continue
+        # vec1 = np.array(nowlocation)
+        # vec2 = np.array(boundary)
+        # Euclidean = np.linalg.norm(vec1 - vec2)
+        # prob = 1 / (1 + math.exp(-Euclidean))
+        # return random.random() < prob
 
 
 
@@ -279,6 +286,7 @@ def main():
             print(f'step {t}, action: {a}, scores:', BestChild(node, 0, True))
             node = node.dicsubnode[a]
             print(f'reward: {node.reward}')
+            total_node_reward.append(node.reward)
             cums.append((cums[-1] if cums else 0) + node.reward)
             s = copy.deepcopy(node.state)
             t = node.time
@@ -295,7 +303,7 @@ def main():
             X.append(x)
         else:
             break
-
+    print(total_node_reward)
     plot(cums, P, I, X)
 
 
@@ -315,10 +323,10 @@ def plot(y, p, i, x):
     ax = plt.subplot()
 
     t = range(1, len(y) + 1)
-    ax.plot(t, y, '-', label='R')
-    ax.plot(t, p, '-', label='P')
-    ax.plot(t, i, '-', label='I')
-    ax.plot(t, x, '-', label='X')
+    ax.plot(t, y, '-', label='Cumulative Reward')
+    ax.plot(t, p, '-', label='Product')
+    ax.plot(t, i, '-', label='Impurity')
+    ax.plot(t, x, '-', label='Cell Density')
 
     plt.xlabel('Time')
     # plt.ylabel('Cumulative Reward')

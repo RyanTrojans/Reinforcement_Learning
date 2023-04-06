@@ -1,9 +1,7 @@
 import numpy as np
 import pandas as pd
 import time
-from BNStructureAnalysis.src.environment import process_env
-from BNStructureAnalysis.src.simulator import cho_cell_culture_simulator
-from BNStructureAnalysis.src.chromatography import chromatography
+from BNStructureAnalysis.src.simulator import process_env, cho_cell_culture_simulator, chromatography
 from BNStructureAnalysis.src.treeNode import TreeNode
 import matplotlib.pyplot as plt
 import logging
