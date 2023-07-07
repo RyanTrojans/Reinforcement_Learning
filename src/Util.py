@@ -1,5 +1,6 @@
 def get_purity(state):
-    return state[-2] / (state[-1] + state[-2])
+    # product/ product + purity
+    return state[-2] / (state[-1] + state[-2] + 1e-9)
 
 
 def get_reward(purity, product,
